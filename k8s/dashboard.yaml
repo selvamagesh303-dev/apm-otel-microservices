@@ -1,0 +1,96 @@
+# Project 2 — real-time APM dashboard (FastAPI backend + Next.js frontend).
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-backend
+  labels:
+    app: dashboard-backend
+spec:
+  selector:
+    app: dashboard-backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-backend
+  template:
+    metadata:
+      labels:
+        app: dashboard-backend
+    spec:
+      containers:
+        - name: dashboard-backend
+          image: dashboard-backend
+          ports:
+            - containerPort: 8000
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse
+            - name: CLICKHOUSE_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: otel
+            - name: FRONTEND_ORIGIN
+              value: http://localhost:3000
+            # Optional: set to enable real Slack alerts.
+            - name: SLACK_WEBHOOK_URL
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-frontend
+  labels:
+    app: dashboard-frontend
+spec:
+  selector:
+    app: dashboard-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-frontend
+  template:
+    metadata:
+      labels:
+        app: dashboard-frontend
+    spec:
+      containers:
+        - name: dashboard-frontend
+          image: dashboard-frontend
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

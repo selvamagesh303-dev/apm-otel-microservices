@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: apm
+
+resources:
+  - namespace.yaml
+  - configmaps.yaml
+  - clickhouse.yaml
+  - jaeger.yaml
+  - otel-collector.yaml
+  - prometheus.yaml
+  - grafana.yaml
+  - microservices.yaml
+  - dashboard.yaml
+
+# Map the short image names in the manifests to your registry. Override the
+# registry/tag here (or with `kustomize edit set image ...`) after pushing.
+images:
+  - name: gateway-service
+    newName: ghcr.io/selvamagesh303-dev/apm-gateway-service
+    newTag: latest
+  - name: order-service
+    newName: ghcr.io/selvamagesh303-dev/apm-order-service
+    newTag: latest
+  - name: inventory-service
+    newName: ghcr.io/selvamagesh303-dev/apm-inventory-service
+    newTag: latest
+  - name: dashboard-backend
+    newName: ghcr.io/selvamagesh303-dev/apm-dashboard-backend
+    newTag: latest
+  - name: dashboard-frontend
+    newName: ghcr.io/selvamagesh303-dev/apm-dashboard-frontend
+    newTag: latest

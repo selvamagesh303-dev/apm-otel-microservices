@@ -56,6 +56,9 @@ Everything builds and runs in containers; no Java/Node/Python needed locally:
 docker compose up --build
 ```
 
+> Prefer Kubernetes? The full stack also ships as Kustomize manifests — see
+> [`k8s/`](k8s/) for `kubectl apply -k k8s/`.
+
 Generate traffic so the dashboards fill up:
 
 ```powershell
@@ -102,7 +105,8 @@ ClickHouse aggregations (`quantile()`, self-joins for the dependency map).
 │   ├── otel-collector-config.yaml   # OTLP -> Jaeger + Prometheus + ClickHouse
 │   ├── prometheus.yml
 │   └── grafana/provisioning/
-├── scripts/                  # load generators
+├── k8s/                      # Kustomize manifests (kubectl apply -k k8s/)
+├── scripts/                  # load generators + image build/push
 └── docker-compose.yml        # the whole stack
 ```
 
