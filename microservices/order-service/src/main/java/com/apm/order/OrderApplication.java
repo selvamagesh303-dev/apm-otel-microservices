@@ -19,8 +19,8 @@ public class OrderApplication {
         // The OTel agent instruments RestTemplate and injects trace headers
         // automatically, so the downstream inventory-service joins this trace.
         return builder
-                .connectTimeout(Duration.ofSeconds(2))
-                .readTimeout(Duration.ofSeconds(5))
+                .setConnectTimeout(Duration.ofSeconds(2))
+                .setReadTimeout(Duration.ofSeconds(5))
                 .build();
     }
 }
