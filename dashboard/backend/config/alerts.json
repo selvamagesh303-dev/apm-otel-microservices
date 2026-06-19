@@ -1,0 +1,24 @@
+[
+  {
+    "id": "high-error-rate",
+    "name": "High error rate (gateway)",
+    "metric": "error_rate",
+    "service": "gateway-service",
+    "comparator": ">",
+    "threshold": 0.10,
+    "window_seconds": 60,
+    "channels": ["slack"],
+    "enabled": true
+  },
+  {
+    "id": "slow-p95",
+    "name": "Slow p95 latency (any service)",
+    "metric": "p95_ms",
+    "service": "*",
+    "comparator": ">",
+    "threshold": 750,
+    "window_seconds": 60,
+    "channels": ["slack", "email"],
+    "enabled": true
+  }
+]

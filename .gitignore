@@ -20,3 +20,15 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Node / Next.js (dashboard frontend)
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Python (dashboard backend)
+__pycache__/
+*.pyc
+.venv/
+venv/

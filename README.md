@@ -1,127 +1,120 @@
-# APM with OpenTelemetry — 3 Java Microservices
+# APM with OpenTelemetry — Microservices + Real-Time Dashboard
 
-A hands-on **Application Performance Monitoring** demo built around **distributed tracing**.
-Three Spring Boot services call each other, are auto-instrumented with the
-**OpenTelemetry Java agent**, and export traces + metrics to a full observability stack.
+A hands-on **Application Performance Monitoring** portfolio built on **OpenTelemetry**.
+Three instrumented Java microservices emit telemetry; a full observability stack collects
+it; and a custom **real-time dashboard** (FastAPI + ClickHouse + Next.js) visualizes it.
 
 ```
-client ─POST /api/checkout/{sku}─▶ gateway-service ─▶ order-service ─▶ inventory-service
-                                        │                  │                  │
-                                        └──────── OTLP (traces + metrics) ─────┘
-                                                          ▼
-                                                  OTel Collector
-                                                   ┌────┴────┐
-                                              Jaeger      Prometheus ─▶ Grafana
-                                             (traces)      (metrics)
+                                          ┌──> Jaeger        (trace explorer)
+client ─▶ gateway ─▶ order ─▶ inventory   │
+   (Java + OpenTelemetry Java agent)      │
+            │  OTLP traces + metrics      │
+            └────────▶ OTel Collector ────┼──> Prometheus ──> Grafana
+                                          │
+                                          └──> ClickHouse ──> FastAPI ──WS/REST──> Next.js dashboard
 ```
 
-A single request to the gateway produces **one end-to-end trace spanning all three
-services** — the core thing APM gives you.
+## The two projects
 
-## The three projects
+### Project 1 — Instrumented microservices (`microservices/`)
+Three Spring Boot services with **zero tracing code** — auto-instrumented by the
+OpenTelemetry Java agent. One request produces a single distributed trace across all three.
 
-| Service | Port | Role | Calls |
-|---|---|---|---|
-| **gateway-service** | 8080 | Public entry point. Starts the trace. | → order-service |
-| **order-service** | 8081 | Creates an order, decides confirm/backorder. | → inventory-service |
-| **inventory-service** | 8082 | Leaf service. Owns stock levels per SKU. | — |
-
-## Observability stack
-
-| Tool | URL | Purpose |
+| Service | Port | Role |
 |---|---|---|
-| **Jaeger** | http://localhost:16686 | View distributed traces (select `gateway-service`) |
-| **Prometheus** | http://localhost:9090 | Query raw metrics |
-| **Grafana** | http://localhost:3000 | Dashboards (anonymous admin, datasource pre-wired) |
-| OTel Collector | :4317 / :4318 | Receives OTLP, fans out to Jaeger + Prometheus |
+| `gateway-service` | 8080 | Public entry point — starts the trace |
+| `order-service` | 8081 | Creates orders, calls inventory |
+| `inventory-service` | 8082 | Leaf service — owns stock per SKU |
 
-## Quick start (Docker — no Maven needed)
+### Project 2 — Real-Time APM Dashboard (`dashboard/`)
+A full-stack monitoring UI that reads the OpenTelemetry data from ClickHouse and renders it live.
 
-Everything (build + agents + backends) runs in containers:
+- **Live metrics** — request rate, error rate, p50/p95/p99 latency, streamed over WebSocket
+- **Service dependency map** — built from span parent/child relationships (React Flow)
+- **Alerting** — configurable threshold rules with Slack / email notifications on state change
+- **Anomaly detection** — z-score test over recent latency/rate/error series
+- **Trace drill-down** — slowest transactions with a span waterfall view
+
+**Stack:** Next.js + TypeScript + Tailwind frontend · FastAPI (Python) backend · ClickHouse
+time-series store · WebSockets for real-time updates.
+
+## All the UIs
+
+| UI | URL | What |
+|---|---|---|
+| **APM Dashboard** | http://localhost:3000 | The custom dashboard (project 2) |
+| Dashboard API docs | http://localhost:8000/docs | FastAPI OpenAPI explorer |
+| Jaeger | http://localhost:16686 | Raw distributed traces |
+| Prometheus | http://localhost:9090 | Metric queries |
+| Grafana | http://localhost:3001 | Dashboards (anonymous admin) |
+
+## Quick start (one command — Docker only)
+
+Everything builds and runs in containers; no Java/Node/Python needed locally:
 
 ```bash
 docker compose up --build
 ```
 
-Wait for all services to report healthy, then generate traffic:
+Generate traffic so the dashboards fill up:
 
 ```powershell
-# Windows
-./scripts/load-test.ps1 -Count 50
+./scripts/load-test.ps1 -Count 80      # Windows
 ```
 ```bash
-# macOS / Linux
-./scripts/load-test.sh 50
+./scripts/load-test.sh 80               # macOS / Linux
 ```
 
-Or fire a single request:
+Then open the **dashboard at http://localhost:3000**. Try the Service Map, Traces, and
+Alerts tabs. Sample SKUs: `SKU-001` (in stock), `SKU-003` (out of stock), anything else
+→ `BACKORDERED`. To trip an alert, hammer out-of-stock SKUs to push the error rate up.
 
+### Enabling real alert notifications (optional)
 ```bash
-curl -X POST http://localhost:8080/api/checkout/SKU-001
+SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX" docker compose up --build
 ```
-
-Now open **Jaeger** (http://localhost:16686), pick `gateway-service`, and click a trace —
-you'll see spans flow gateway → order → inventory with timing for each hop.
-
-Sample SKUs: `SKU-001` (in stock), `SKU-002` (low), `SKU-003` (out of stock),
-anything else → `BACKORDERED`.
-
-## Running locally without Docker (optional)
-
-The services are a standard Maven multi-module project. You need Maven 3.9+ and the
-OTel agent jar.
-
-```powershell
-# Install Maven if needed
-winget install Apache.Maven
-
-# Build all three
-mvn clean package
-
-# Download the OpenTelemetry Java agent once
-curl -L -o opentelemetry-javaagent.jar `
-  https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
-```
-
-Start an OTLP backend (e.g. `docker compose up otel-collector jaeger prometheus grafana`),
-then launch each service in its own terminal:
-
-```powershell
-$env:OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
-$env:OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
-
-java -javaagent:opentelemetry-javaagent.jar -DOTEL_SERVICE_NAME=inventory-service -jar inventory-service/target/inventory-service.jar
-java -javaagent:opentelemetry-javaagent.jar -DOTEL_SERVICE_NAME=order-service     -jar order-service/target/order-service.jar
-java -javaagent:opentelemetry-javaagent.jar -DOTEL_SERVICE_NAME=gateway-service   -jar gateway-service/target/gateway-service.jar
-```
+Email uses the `SMTP_*` env vars (see `dashboard/backend/app/config.py`). Without either,
+alerts are evaluated and shown in the UI/logs but not sent externally.
 
 ## How the instrumentation works
 
-There is **no tracing code** in the services. The `-javaagent:opentelemetry-javaagent.jar`
-flag attaches at JVM start and auto-instruments Spring MVC and `RestTemplate`. It:
+There is **no tracing code** in the Java services. The `-javaagent:opentelemetry-javaagent.jar`
+flag attaches at JVM start, auto-instruments Spring MVC + `RestTemplate`, creates a server
+span per request, and injects W3C `traceparent` headers on outbound calls so downstream
+services join the same trace. The OTel Collector fans that data out to Jaeger, Prometheus,
+and ClickHouse. The dashboard backend then computes APM metrics from `otel_traces` using
+ClickHouse aggregations (`quantile()`, self-joins for the dependency map).
 
-1. Creates a server span for each incoming HTTP request.
-2. Injects W3C `traceparent` headers on outgoing `RestTemplate` calls.
-3. The downstream service reads those headers and continues the same trace.
-
-Configuration is entirely via `OTEL_*` environment variables (see `docker-compose.yml`).
-
-## Project layout
+## Repository layout
 
 ```
 .
-├── pom.xml                      # parent (multi-module)
-├── gateway-service/             # project 1
-├── order-service/               # project 2
-├── inventory-service/           # project 3
-├── Dockerfile                   # one parametrized multi-stage build for all services
-├── docker-compose.yml           # apps + OTel Collector + Jaeger + Prometheus + Grafana
+├── microservices/            # PROJECT 1
+│   ├── pom.xml               #   Maven multi-module parent
+│   ├── gateway-service/
+│   ├── order-service/
+│   ├── inventory-service/
+│   └── Dockerfile            #   one parametrized multi-stage build for all 3
+├── dashboard/                # PROJECT 2
+│   ├── backend/              #   FastAPI + ClickHouse (REST + WebSocket + alerts)
+│   └── frontend/             #   Next.js + TypeScript + Tailwind
 ├── otel/
-│   ├── otel-collector-config.yaml
+│   ├── otel-collector-config.yaml   # OTLP -> Jaeger + Prometheus + ClickHouse
 │   ├── prometheus.yml
-│   └── grafana/provisioning/    # auto-wired Prometheus datasource
-└── scripts/                     # load generators
+│   └── grafana/provisioning/
+├── scripts/                  # load generators
+└── docker-compose.yml        # the whole stack
 ```
+
+## Running pieces individually (dev)
+
+**Microservices** need Maven (`winget install Apache.Maven`) — see `microservices/` and run
+`mvn -f microservices/pom.xml clean package`, then launch each jar with the OTel agent.
+
+**Dashboard backend**: `cd dashboard/backend && pip install -r requirements.txt && uvicorn app.main:app --reload`
+(point `CLICKHOUSE_HOST` at a running ClickHouse).
+
+**Dashboard frontend**: `cd dashboard/frontend && npm install && npm run dev`.
 
 ## License
 

@@ -1,9 +1,16 @@
-# Full APM demo stack:
-#   3 instrumented Spring Boot services  ->  OTel Collector  ->  Jaeger (traces) + Prometheus (metrics) -> Grafana
+# Full APM portfolio stack.
+#
+# Project 1 — instrumented microservices:  gateway -> order -> inventory
+# Project 2 — real-time dashboard:          ClickHouse + FastAPI + Next.js
+#
+# Telemetry flow:
+#   services --OTLP--> OTel Collector --+--> Jaeger      (trace explorer)
+#                                       +--> Prometheus  (metrics) --> Grafana
+#                                       +--> ClickHouse  --> dashboard-backend --WS/REST--> dashboard-frontend
 #
 #   Run:  docker compose up --build
-#   Then: POST http://localhost:8080/api/checkout/SKU-001
-#   View: Jaeger http://localhost:16686  |  Prometheus http://localhost:9090  |  Grafana http://localhost:3000
+#   Then: ./scripts/load-test.ps1 -Count 80
+#   UIs:  Dashboard http://localhost:3000 | Jaeger :16686 | Prometheus :9090 | Grafana :3000... (see README)
 
 name: apm-otel-microservices
 
@@ -20,6 +27,7 @@ services:
       - "8889:8889"   # Prometheus exporter scrape endpoint
     depends_on:
       - jaeger
+      - clickhouse
 
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
@@ -44,14 +52,32 @@ services:
     volumes:
       - ./otel/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3000:3000"
+      - "3001:3000"   # Grafana moved to 3001 (dashboard frontend owns 3000)
     depends_on:
       - prometheus
 
-  # ---------- Application services ----------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      - CLICKHOUSE_DB=otel
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "8123:8123"   # HTTP (used by dashboard backend)
+      - "9000:9000"   # native (used by OTel Collector exporter)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------- Project 1: application microservices ----------
   inventory-service:
     build:
-      context: .
+      context: ./microservices
       args:
         SERVICE: inventory-service
     environment:
@@ -67,7 +93,7 @@ services:
 
   order-service:
     build:
-      context: .
+      context: ./microservices
       args:
         SERVICE: order-service
     environment:
@@ -85,7 +111,7 @@ services:
 
   gateway-service:
     build:
-      context: .
+      context: ./microservices
       args:
         SERVICE: gateway-service
     environment:
@@ -100,3 +126,30 @@ services:
     depends_on:
       - order-service
       - otel-collector
+
+  # ---------- Project 2: real-time APM dashboard ----------
+  dashboard-backend:
+    build:
+      context: ./dashboard/backend
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_DATABASE=otel
+      - FRONTEND_ORIGIN=http://localhost:3000
+      # Optional notifications — set to enable real alerts:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  dashboard-frontend:
+    build:
+      context: ./dashboard/frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - dashboard-backend

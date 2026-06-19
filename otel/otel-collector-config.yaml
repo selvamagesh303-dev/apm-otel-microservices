@@ -25,6 +25,20 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
 
+  # Traces -> ClickHouse (powers the Real-Time APM Dashboard).
+  # The exporter auto-creates the `otel` database and `otel_traces` table.
+  clickhouse:
+    endpoint: tcp://clickhouse:9000?dial_timeout=10s
+    database: otel
+    username: default
+    password: ""
+    ttl: 72h
+    create_schema: true
+    traces_table_name: otel_traces
+    timeout: 10s
+    retry_on_failure:
+      enabled: true
+
   debug:
     verbosity: basic
 
@@ -33,7 +47,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/jaeger, debug]
+      exporters: [otlp/jaeger, clickhouse, debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
